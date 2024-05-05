@@ -20,7 +20,7 @@ contract SortAndEarn is ERC20, Ownable {
 
     constructor() ERC20("SortAndEarn", "SAE") {
         // Only for tests purposes
-        _mint(msg.sender, 600000 * 1e18);
+        _mint(msg.sender, 0 * 1e18);
     }
 
     struct FeeRecipient {
@@ -139,15 +139,19 @@ contract SortAndEarn is ERC20, Ownable {
         return _currentPrice;
     }
 
-    function calculatePriceForBuy(uint256 tokenNumber)
+    function calculatePriceForBuy(uint256 usdAmount)
         public
         view
         returns (uint256)
     {
+        uint256 usdAmountIn18Decimal = usdAmount * 1e12;
         uint256 _currentPrice = currentPrice();
-        return
-            ((tokenNumber * (_currentPrice + (tokenNumber / 2500000000) / 2)) /
-                1e18) / 1e12;
+        uint256 _tokenNumber = usdAmountIn18Decimal / _currentPrice;
+        uint256 _priceStep = _tokenNumber * _priceStepPerToken;
+        uint256 _endPrice = _priceStep + _currentPrice;
+        uint256 _midPrice = (_currentPrice + _endPrice) / 2;
+
+        return (usdAmountIn18Decimal / _midPrice) * 1e18;
     }
 
     function calculatePriceForSell(uint256 tokenNumber)
@@ -161,16 +165,16 @@ contract SortAndEarn is ERC20, Ownable {
                 1e18) / 1e12;
     }
 
-    function _buy(uint256 tokenNumber) public payable {
-        require(tokenNumber > 0, "Cannot buy 0 token");
+    function _buy(uint256 usdAmount) public payable {
+        require(usdAmount > 0, "Cannot buy 0 token");
+        require(usdc.balanceOf(msg.sender) >= usdAmount, "Insufficient balance");
 
-        uint256 price = calculatePriceForBuy(tokenNumber);
-        require(usdc.balanceOf(msg.sender) >= price, "Insufficient balance");
-
+        uint256 tokenNumber = calculatePriceForBuy(usdAmount);
+        require(tokenNumber > 0, "Cannot buy too little portion of SAE");
         uint256 fee = 0;
 
         require(
-            usdc.transferFrom(msg.sender, address(this), price),
+            usdc.transferFrom(msg.sender, address(this), usdAmount),
             "Failed to transfer USDC"
         );
         _mint(address(this), tokenNumber);
